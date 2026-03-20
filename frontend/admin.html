@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#a90096">
+  <title>Admin — PPSC</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* Live dot in admin header */
+    .live-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-display);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--on-surface-muted);
+    }
+    #live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--tertiary);
+      animation: livePulse 2s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+    #create-error {
+      color: var(--error);
+      font-size: 0.85rem;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-layout">
+
+    <!-- Header -->
+    <header class="admin-header glass">
+      <img src="/logo.png" alt="PPSC" class="logo">
+      <span class="site-name">Ping Pong Social Club</span>
+      <div class="live-indicator">
+        <div id="live-dot"></div>
+        <span>Live</span>
+      </div>
+      <div class="header-actions">
+        <a href="/admin/qr" class="btn btn-ghost btn-sm">QR Codes</a>
+        <a href="/admin/logout" class="btn btn-secondary btn-sm">Log out</a>
+      </div>
+    </header>
+
+    <!-- Main -->
+    <main class="admin-main">
+      <div class="admin-page-header">
+        <div>
+          <h1 class="admin-page-title">Tables</h1>
+          <p class="body-sm" style="margin-top:0.25rem">
+            <span id="table-count">0</span> table(s) active
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateModal()">
+          + Add Table
+        </button>
+      </div>
+
+      <!-- Tables grid -->
+      <div id="tables-container">
+        <div style="padding:3rem;text-align:center;color:var(--on-surface-muted)">
+          Loading tables…
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Create Table Modal -->
+  <div class="modal-overlay hidden" id="create-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <h2 class="modal-title" id="modal-title">Add New Table</h2>
+      <form class="form-stack" id="create-form" onsubmit="submitCreateTable(event)">
+        <div class="form-group">
+          <label class="form-label" for="new-table-name">Table name</label>
+          <input class="form-input" type="text" id="new-table-name" name="name"
+            placeholder="e.g. Table 1" maxlength="50" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="new-table-type">Type</label>
+          <select class="form-select" id="new-table-type" name="type" required>
+            <option value="">Choose…</option>
+            <option value="singles">Singles</option>
+            <option value="doubles">Doubles</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="new-table-mode">Play mode</label>
+          <select class="form-select" id="new-table-mode" name="play_mode" required>
+            <option value="rotation">Rotation — players rotate each game</option>
+            <option value="winner_stays">Winner Stays — winner keeps playing</option>
+          </select>
+        </div>
+        <div class="form-group hidden" id="max-wins-group">
+          <label class="form-label" for="new-table-max-wins">Max consecutive wins</label>
+          <input class="form-input" type="number" id="new-table-max-wins" name="max_wins"
+            value="3" min="1" max="10" step="1">
+          <span class="body-sm">Winner rotates out after this many consecutive wins</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="new-table-id">
+            ID (URL slug)
+            <span class="text-muted" style="font-weight:400;text-transform:none;letter-spacing:0"> — auto-generated from name</span>
+          </label>
+          <input class="form-input" type="text" id="new-table-id" name="id"
+            placeholder="e.g. table-1" maxlength="50"
+            pattern="[a-z0-9-]+"
+            title="Lowercase letters, numbers, and hyphens only">
+        </div>
+        <div id="create-error"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Table</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>

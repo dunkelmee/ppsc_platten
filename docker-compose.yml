@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8076:8000"
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - EVENT_NAME=${EVENT_NAME:-Ping Pong Social Club}
+      - BASE_URL=${BASE_URL:-http://localhost:8000}
+    volumes:
+      - ./tables.json:/app/tables.json:ro
+    restart: unless-stopped

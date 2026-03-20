@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#a90096">
+  <title>Admin Login — PPSC</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <img src="/logo.png" alt="PPSC Logo" class="login-logo">
+      <h1 class="login-title">Host Login</h1>
+      <p class="login-subtitle">Ping Pong Social Club — Admin Panel</p>
+
+      <!-- ERROR_PLACEHOLDER -->
+
+      <form method="POST" action="/admin/login" class="form-stack">
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input
+            class="form-input"
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Enter admin password"
+            required
+            autofocus
+            autocomplete="current-password"
+          >
+        </div>
+        <button class="btn btn-primary btn-full" type="submit">
+          Sign In →
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

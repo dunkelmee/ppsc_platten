@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ppsc
+    runtime: docker
+    plan: free
+    envVars:
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: BASE_URL
+        sync: false
+      - key: PORT
+        value: "10000"

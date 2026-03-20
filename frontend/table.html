@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#a90096">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Queue — PPSC</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* Extra mobile polish */
+    body {
+      background: var(--surface);
+      overscroll-behavior: none;
+    }
+    .page-body {
+      padding-bottom: env(safe-area-inset-bottom, 2rem);
+      padding-bottom: max(2rem, env(safe-area-inset-bottom));
+    }
+    /* Live connection dot */
+    .live-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-display);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--on-surface-muted);
+    }
+    #live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--tertiary);
+      animation: livePulse 2s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Sticky glassmorphism header -->
+    <header class="site-header glass">
+      <img src="/logo.png" alt="PPSC" class="logo">
+      <div class="header-text">
+        <div class="table-name" id="table-name">Loading…</div>
+        <div class="header-meta">
+          <span class="badge badge--singles" id="type-badge"></span>
+          <span class="badge badge--open" id="status-badge"></span>
+        </div>
+      </div>
+      <div class="live-indicator">
+        <div id="live-dot"></div>
+        <span>Live</span>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="page-body">
+      <!-- Current game / open state -->
+      <section id="current-game-section">
+        <div class="skeleton" style="height:130px;border-radius:var(--radius-lg)"></div>
+      </section>
+
+      <!-- Queue list -->
+      <section id="queue-section"></section>
+
+      <!-- Solo pool (doubles only) -->
+      <section id="solo-pool-section"></section>
+
+      <!-- Join form -->
+      <section id="join-form-section"></section>
+    </main>
+  </div>
+
+  <script src="/js/table.js"></script>
+</body>
+</html>

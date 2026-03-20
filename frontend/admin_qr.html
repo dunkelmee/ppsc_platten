@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Codes — PPSC Admin</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="admin-layout">
+
+    <header class="admin-header glass">
+      <img src="/logo.png" alt="PPSC" class="logo">
+      <span class="site-name">QR Codes</span>
+      <div class="header-actions" style="margin-left:auto">
+        <a href="/admin" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
+        <button class="btn btn-primary btn-sm" onclick="window.print()">🖨 Print All</button>
+      </div>
+    </header>
+
+    <main class="admin-main">
+      <div class="admin-page-header">
+        <div>
+          <h1 class="admin-page-title">QR Codes</h1>
+          <p class="body-sm" style="margin-top:0.25rem">
+            Print and stick these on your tables. Players scan to join the queue.
+          </p>
+        </div>
+      </div>
+
+      <div id="qr-container">
+        <div style="padding:3rem;text-align:center;color:var(--on-surface-muted)">
+          Loading QR codes…
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    async function loadQRCodes() {
+      const container = document.getElementById('qr-container');
+      try {
+        const res = await fetch('/admin/state', { credentials: 'include' });
+        if (res.status === 401) { window.location.href = '/admin/login'; return; }
+        const tables = await res.json();
+        const entries = Object.values(tables);
+
+        if (entries.length === 0) {
+          container.innerHTML = `
+            <div style="text-align:center;padding:3rem;color:var(--on-surface-muted)">
+              No tables yet. <a href="/admin">Create some tables first.</a>
+            </div>`;
+          return;
+        }
+
+        const origin = window.location.origin;
+        const cards = entries.map(table => `
+          <div class="qr-card">
+            <img src="/admin/qr/${encodeURIComponent(table.id)}" alt="QR for ${table.name}"
+              onerror="this.style.display='none'">
+            <div class="qr-card-name">${escHtml(table.name)}</div>
+            <div class="qr-card-url">${origin}/table/${encodeURIComponent(table.id)}</div>
+            <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
+              <span class="badge badge--${table.type}">${table.type === 'singles' ? 'Singles' : 'Doubles'}</span>
+            </div>
+            <div style="margin-top:1rem">
+              <a href="/admin/qr/${encodeURIComponent(table.id)}" download="${encodeURIComponent(table.id)}-qr.png"
+                class="btn btn-secondary btn-sm btn-full">
+                ⬇ Download PNG
+              </a>
+            </div>
+          </div>
+        `).join('');
+
+        container.innerHTML = `<div class="qr-grid">${cards}</div>`;
+      } catch (e) {
+        container.innerHTML = `<div style="padding:2rem;color:var(--error)">Error: ${e.message}</div>`;
+      }
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    document.addEventListener('DOMContentLoaded', loadQRCodes);
+  </script>
+</body>
+</html>
