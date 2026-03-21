@@ -472,10 +472,15 @@ function setupDoublesToggle() {
 function render(state, prevState) {
   const identity = getIdentity();
 
-  // Check for pairing (pool → queue transition)
+  // Check for state transitions
   if (prevState && identity) {
     const prevInfo = getUserGameInfo(prevState, identity);
     const currInfo = getUserGameInfo(state, identity);
+
+    // queue → playing: it's the player's turn
+    if (prevInfo && prevInfo.location === 'queue' && currInfo && currInfo.location === 'playing') {
+      alertPlayerTurn();
+    }
     if (prevInfo && prevInfo.location === 'pool' && currInfo && currInfo.location !== 'pool') {
       const partner = currInfo.game.players.find(p => p.nickname !== identity.nickname);
       if (partner) {
@@ -641,6 +646,31 @@ function connectSSE() {
     const indicator = document.getElementById('live-dot');
     if (indicator) indicator.style.background = 'var(--tertiary)';
   };
+}
+
+// ── Alert: vibrate + chime when it's the player's turn ────────────────────────
+
+function alertPlayerTurn() {
+  // Vibrate: three short pulses (works on Android; silently ignored on iOS/desktop)
+  if ('vibrate' in navigator) {
+    navigator.vibrate([300, 120, 300, 120, 300]);
+  }
+  // Chime: two ascending tones via Web Audio API (no file needed)
+  try {
+    const ctx = new AudioContext();
+    [[440, 0], [660, 0.25]].forEach(([freq, startOffset]) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.4, ctx.currentTime + startOffset);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startOffset + 0.6);
+      osc.start(ctx.currentTime + startOffset);
+      osc.stop(ctx.currentTime + startOffset + 0.6);
+    });
+  } catch { /* audio not available */ }
 }
 
 // ── Push notifications ────────────────────────────────────────────────────────
