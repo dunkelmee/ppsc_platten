@@ -33,12 +33,27 @@ active_sessions: set[str] = set()
 
 # ── Web Push / VAPID ──────────────────────────────────────────────────────────
 
+_DATA_DIR = Path(os.environ.get("TABLES_CONFIG", "/app/tables.json")).parent
+_VAPID_FILE = _DATA_DIR / "vapid_keys.json"
+_PUSH_SUBS_FILE = _DATA_DIR / "push_subscriptions.json"
+
+
 def _init_vapid() -> tuple[str, str]:
-    """Return (private_key_pem, public_key_b64url). Generate if not in env."""
+    """Return (private_key_pem, public_key_b64url).
+    Priority: env vars > persisted file > generate & save to file."""
     priv = os.environ.get("VAPID_PRIVATE_KEY")
     pub  = os.environ.get("VAPID_PUBLIC_KEY")
     if priv and pub:
         return priv, pub
+    # Try to load from persisted file
+    if _VAPID_FILE.exists():
+        try:
+            data = json.loads(_VAPID_FILE.read_text())
+            logger.info("VAPID keys loaded from %s", _VAPID_FILE)
+            return data["private_key"], data["public_key"]
+        except Exception as exc:
+            logger.warning("Failed to read VAPID keys file: %s", exc)
+    # Generate new keys and persist them
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives import serialization
     import base64
@@ -53,13 +68,37 @@ def _init_vapid() -> tuple[str, str]:
         serialization.PublicFormat.UncompressedPoint,
     )
     pub_b64 = base64.urlsafe_b64encode(pub_bytes).rstrip(b"=").decode()
-    print("VAPID keys generated. Set VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY env vars to persist across restarts.")
+    try:
+        _VAPID_FILE.write_text(json.dumps({"private_key": priv_pem, "public_key": pub_b64}))
+        logger.info("VAPID keys generated and saved to %s", _VAPID_FILE)
+    except Exception as exc:
+        logger.warning("Could not persist VAPID keys: %s — set VAPID_PRIVATE_KEY/VAPID_PUBLIC_KEY env vars", exc)
     return priv_pem, pub_b64
+
 
 VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY = _init_vapid()
 
 # push_subscriptions[table_id][game_id] = subscription_json (endpoint + keys)
 push_subscriptions: dict[str, dict[str, dict]] = {}
+
+
+def _load_push_subscriptions() -> None:
+    if not _PUSH_SUBS_FILE.exists():
+        return
+    try:
+        data = json.loads(_PUSH_SUBS_FILE.read_text())
+        push_subscriptions.update(data)
+        total = sum(len(v) for v in push_subscriptions.values())
+        logger.info("Loaded %d push subscription(s) from %s", total, _PUSH_SUBS_FILE)
+    except Exception as exc:
+        logger.warning("Failed to load push subscriptions: %s", exc)
+
+
+def _save_push_subscriptions() -> None:
+    try:
+        _PUSH_SUBS_FILE.write_text(json.dumps(push_subscriptions))
+    except Exception as exc:
+        logger.warning("Failed to save push subscriptions: %s", exc)
 
 
 async def _push_notify(game_id: str, subscription: dict, payload: dict) -> None:
@@ -83,6 +122,7 @@ async def _push_notify(game_id: str, subscription: dict, payload: dict) -> None:
             # Clean up stale subscription
             for subs in push_subscriptions.values():
                 subs.pop(game_id, None)
+            _save_push_subscriptions()
         else:
             logger.error("Push FAILED game=%s status=%s: %s", game_id, status, exc)
     except Exception as exc:
@@ -152,6 +192,7 @@ def require_admin(request: Request) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     state_module.load_initial_tables()
+    _load_push_subscriptions()
     yield
 
 
@@ -212,6 +253,7 @@ async def push_subscribe(table_id: str, request: Request):
     push_subscriptions.setdefault(table_id, {})[game_id] = subscription
     total = sum(len(v) for v in push_subscriptions.values())
     logger.info("Push sub stored: table=%s game=%s (total stored=%d)", table_id, game_id, total)
+    _save_push_subscriptions()
     return {"status": "ok"}
 
 
