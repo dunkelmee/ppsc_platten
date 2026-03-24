@@ -6,107 +6,150 @@
   <title>QR Codes — PPSC Admin</title>
   <link rel="icon" href="/logo.png" type="image/png">
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .lang-btn {
+      font-family: var(--font-display);
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 0.2rem 0.45rem;
+      background: none;
+      border: 1.5px solid var(--on-surface-muted);
+      border-radius: var(--radius-full);
+      color: var(--on-surface-muted);
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-  <div class="admin-layout">
+  <div id="app" class="admin-layout">
 
     <header class="admin-header glass">
       <img src="/logo.png" alt="PPSC" class="logo">
-      <span class="site-name">QR Codes</span>
+      <span class="site-name">{{ $t('qrCodes') }}</span>
       <div class="header-actions" style="margin-left:auto">
-        <a href="/admin" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
-        <button class="btn btn-primary btn-sm" onclick="window.print()">🖨 Print All</button>
+        <button class="lang-btn" @click="toggleLocale">{{ $i18n.locale === 'de' ? 'EN' : 'DE' }}</button>
+        <a href="/admin" class="btn btn-secondary btn-sm">{{ $t('backToDashboard') }}</a>
+        <button class="btn btn-primary btn-sm" @click="printAll">{{ $t('printAll') }}</button>
       </div>
     </header>
 
     <main class="admin-main">
       <div class="admin-page-header">
         <div>
-          <h1 class="admin-page-title">QR Codes</h1>
-          <p class="body-sm" style="margin-top:0.25rem">
-            Print and stick these on your tables. Players scan to join the queue.
-          </p>
+          <h1 class="admin-page-title">{{ $t('qrCodes') }}</h1>
+          <p class="body-sm" style="margin-top:0.25rem">{{ $t('qrCodesDesc') }}</p>
         </div>
       </div>
 
-      <div id="qr-container">
-        <div style="padding:3rem;text-align:center;color:var(--on-surface-muted)">
-          Loading QR codes…
+      <!-- Loading -->
+      <div v-if="loading" style="padding:3rem;text-align:center;color:var(--on-surface-muted)">
+        {{ $t('loadingQRCodes') }}
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="errorMsg" style="padding:2rem;color:var(--error)">
+        {{ $t('errorMsg', { msg: errorMsg }) }}
+      </div>
+
+      <!-- QR grid -->
+      <div class="qr-grid" v-else>
+
+        <!-- Registration QR — always first -->
+        <div class="qr-card" style="border:2px solid var(--primary)">
+          <img src="/admin/qr/register" alt="QR for Registration" @error="hideImg">
+          <div class="qr-card-name" style="color:var(--primary)">{{ $t('playerRegistration') }}</div>
+          <div class="qr-card-url">{{ origin }}/register</div>
+          <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
+            <span class="badge badge--open">{{ $t('centralQR') }}</span>
+          </div>
+          <div style="margin-top:1rem">
+            <a href="/admin/qr/register" download="register-qr.png"
+              class="btn btn-primary btn-sm btn-full">
+              {{ $t('downloadPNG') }}
+            </a>
+          </div>
         </div>
+
+        <!-- No tables message -->
+        <div v-if="tables.length === 0"
+             style="text-align:center;padding:2rem;color:var(--on-surface-muted);grid-column:1/-1">
+          {{ $t('noTablesYet') }}
+          <a href="/admin">{{ $t('createTablesFirst') }}</a>
+        </div>
+
+        <!-- Per-table QR cards -->
+        <div class="qr-card" v-for="table in tables" :key="table.id">
+          <img :src="'/admin/qr/' + encodeURIComponent(table.id)"
+               :alt="'QR for ' + table.name"
+               @error="hideImg">
+          <div class="qr-card-name">{{ table.name }}</div>
+          <div class="qr-card-url">{{ origin }}/table/{{ encodeURIComponent(table.id) }}</div>
+          <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
+            <span :class="['badge', 'badge--' + table.type]">{{ $t(table.type) }}</span>
+          </div>
+          <div style="margin-top:1rem">
+            <a :href="'/admin/qr/' + encodeURIComponent(table.id)"
+               :download="encodeURIComponent(table.id) + '-qr.png'"
+               class="btn btn-secondary btn-sm btn-full">
+              {{ $t('downloadPNG') }}
+            </a>
+          </div>
+        </div>
+
       </div>
     </main>
   </div>
 
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/vue-i18n@9/dist/vue-i18n.global.prod.js"></script>
+  <script src="/js/i18n.js"></script>
   <script>
-    async function loadQRCodes() {
-      const container = document.getElementById('qr-container');
-      try {
-        const res = await fetch('/admin/state', { credentials: 'include' });
-        if (res.status === 401) { window.location.href = '/admin/login'; return; }
-        const tables = await res.json();
-        const entries = Object.values(tables);
+    const _savedLocale = localStorage.getItem('ppsc_locale') ||
+      (navigator.language.startsWith('de') ? 'de' : 'en');
 
-        const origin = window.location.origin;
+    const _i18n = VueI18n.createI18n({
+      locale: _savedLocale,
+      fallbackLocale: 'en',
+      messages: PPSC_MESSAGES,
+    });
 
-        // Registration QR card — always shown
-        const registerCard = `
-          <div class="qr-card" style="border:2px solid var(--primary)">
-            <img src="/admin/qr/register" alt="QR for Registration"
-              onerror="this.style.display='none'">
-            <div class="qr-card-name" style="color:var(--primary)">Player Registration</div>
-            <div class="qr-card-url">${origin}/register</div>
-            <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
-              <span class="badge badge--open">Central QR</span>
-            </div>
-            <div style="margin-top:1rem">
-              <a href="/admin/qr/register" download="register-qr.png"
-                class="btn btn-primary btn-sm btn-full">
-                ⬇ Download PNG
-              </a>
-            </div>
-          </div>
-        `;
+    Vue.createApp({
+      data() {
+        return {
+          loading:  true,
+          errorMsg: '',
+          tables:   [],
+          origin:   window.location.origin,
+        };
+      },
 
-        if (entries.length === 0) {
-          container.innerHTML = `
-            <div class="qr-grid">${registerCard}</div>
-            <div style="text-align:center;padding:2rem;color:var(--on-surface-muted)">
-              No tables yet. <a href="/admin">Create some tables first.</a>
-            </div>`;
-          return;
+      methods: {
+        toggleLocale() {
+          const next = this.$i18n.locale === 'de' ? 'en' : 'de';
+          this.$i18n.locale = next;
+          localStorage.setItem('ppsc_locale', next);
+          document.documentElement.lang = next;
+        },
+        printAll() { window.print(); },
+        hideImg(e) { e.target.style.display = 'none'; },
+      },
+
+      async mounted() {
+        document.documentElement.lang = this.$i18n.locale;
+        try {
+          const res = await fetch('/admin/state', { credentials: 'include' });
+          if (res.status === 401) { window.location.href = '/admin/login'; return; }
+          const data = await res.json();
+          this.tables = Object.values(data);
+        } catch (e) {
+          this.errorMsg = e.message;
+        } finally {
+          this.loading = false;
         }
-
-        const cards = entries.map(table => `
-          <div class="qr-card">
-            <img src="/admin/qr/${encodeURIComponent(table.id)}" alt="QR for ${table.name}"
-              onerror="this.style.display='none'">
-            <div class="qr-card-name">${escHtml(table.name)}</div>
-            <div class="qr-card-url">${origin}/table/${encodeURIComponent(table.id)}</div>
-            <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
-              <span class="badge badge--${table.type}">${table.type === 'singles' ? 'Singles' : 'Doubles'}</span>
-            </div>
-            <div style="margin-top:1rem">
-              <a href="/admin/qr/${encodeURIComponent(table.id)}" download="${encodeURIComponent(table.id)}-qr.png"
-                class="btn btn-secondary btn-sm btn-full">
-                ⬇ Download PNG
-              </a>
-            </div>
-          </div>
-        `).join('');
-
-        container.innerHTML = `<div class="qr-grid">${registerCard}${cards}</div>`;
-      } catch (e) {
-        container.innerHTML = `<div style="padding:2rem;color:var(--error)">Error: ${e.message}</div>`;
-      }
-    }
-
-    function escHtml(str) {
-      return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    document.addEventListener('DOMContentLoaded', loadQRCodes);
+      },
+    }).use(_i18n).mount('#app');
   </script>
 </body>
 </html>

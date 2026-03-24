@@ -314,7 +314,7 @@ async def check_registration(player_id: str):
 
 @app.get("/players")
 async def list_players():
-    return [{"id": p.id, "name": p.name} for p in state_module.list_registered_players()]
+    return [{"id": p.id, "name": p.name, "avatar": p.avatar} for p in state_module.list_registered_players()]
 
 
 @app.get("/table/{table_id}", response_class=HTMLResponse)
@@ -366,14 +366,18 @@ async def join_queue(table_id: str, body: JoinRequest):
     if table.status == TableStatus.closed:
         raise HTTPException(409, "Table is closed")
 
-    player1 = Player(nickname=body.nickname, skill=body.skill, registered_id=body.player_id)
+    player1 = Player(nickname=body.nickname, skill=body.skill, registered_id=body.player_id, avatar=body.avatar)
+    if body.player_id:
+        state_module.update_player_avatar(body.player_id, body.avatar)
 
     if table.type == TableType.singles:
         game = Game(players=[player1])
     else:
         if not body.partner_nickname or not body.partner_skill:
             raise HTTPException(400, "Partner details required for doubles pair join")
-        player2 = Player(nickname=body.partner_nickname, skill=body.partner_skill, registered_id=body.partner_player_id)
+        player2 = Player(nickname=body.partner_nickname, skill=body.partner_skill, registered_id=body.partner_player_id, avatar=body.partner_avatar)
+        if body.partner_player_id:
+            state_module.update_player_avatar(body.partner_player_id, body.partner_avatar)
         game = Game(players=[player1, player2])
 
     updated = state_module.join_queue(table_id, game)
@@ -401,7 +405,9 @@ async def join_solo(table_id: str, body: JoinSoloRequest):
     if table.status == TableStatus.closed:
         raise HTTPException(409, "Table is closed")
 
-    player = Player(nickname=body.nickname, skill=body.skill, registered_id=body.player_id)
+    player = Player(nickname=body.nickname, skill=body.skill, registered_id=body.player_id, avatar=body.avatar)
+    if body.player_id:
+        state_module.update_player_avatar(body.player_id, body.avatar)
     _, paired_game = state_module.join_solo_pool(table_id, player)
     await _broadcast(table_id)
 

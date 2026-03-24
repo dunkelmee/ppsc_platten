@@ -7,35 +7,82 @@
   <title>Admin Login — PPSC</title>
   <link rel="icon" href="/logo.png" type="image/png">
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .lang-btn {
+      font-family: var(--font-display);
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 0.2rem 0.45rem;
+      background: none;
+      border: 1.5px solid var(--on-surface-muted);
+      border-radius: var(--radius-full);
+      color: var(--on-surface-muted);
+      text-transform: uppercase;
+      cursor: pointer;
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+    }
+  </style>
 </head>
 <body>
-  <div class="login-page">
+  <div id="app" class="login-page">
+    <button class="lang-btn" @click="toggleLocale">{{ $i18n.locale === 'de' ? 'EN' : 'DE' }}</button>
     <div class="login-card">
       <img src="/logo.png" alt="PPSC Logo" class="login-logo">
-      <h1 class="login-title">Host Login</h1>
-      <p class="login-subtitle">Ping Pong Social Club — Admin Panel</p>
+      <h1 class="login-title">{{ $t('hostLogin') }}</h1>
+      <p class="login-subtitle">{{ $t('adminPanel') }}</p>
 
       <!-- ERROR_PLACEHOLDER -->
 
       <form method="POST" action="/admin/login" class="form-stack">
         <div class="form-group">
-          <label class="form-label" for="password">Password</label>
+          <label class="form-label" for="password">{{ $t('password') }}</label>
           <input
             class="form-input"
             type="password"
             id="password"
             name="password"
-            placeholder="Enter admin password"
+            :placeholder="$t('enterPassword')"
             required
             autofocus
             autocomplete="current-password"
           >
         </div>
         <button class="btn btn-primary btn-full" type="submit">
-          Sign In →
+          {{ $t('signIn') }}
         </button>
       </form>
     </div>
   </div>
+
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/vue-i18n@9/dist/vue-i18n.global.prod.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script>
+    const _savedLocale = localStorage.getItem('ppsc_locale') ||
+      (navigator.language.startsWith('de') ? 'de' : 'en');
+
+    const _i18n = VueI18n.createI18n({
+      locale: _savedLocale,
+      fallbackLocale: 'en',
+      messages: PPSC_MESSAGES,
+    });
+
+    Vue.createApp({
+      methods: {
+        toggleLocale() {
+          const next = this.$i18n.locale === 'de' ? 'en' : 'de';
+          this.$i18n.locale = next;
+          localStorage.setItem('ppsc_locale', next);
+          document.documentElement.lang = next;
+        },
+      },
+      mounted() {
+        document.documentElement.lang = this.$i18n.locale;
+      },
+    }).use(_i18n).mount('#app');
+  </script>
 </body>
 </html>

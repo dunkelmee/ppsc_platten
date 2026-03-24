@@ -39,6 +39,13 @@ def list_registered_players() -> list[RegisteredPlayer]:
     return list(registered_players.values())
 
 
+def update_player_avatar(player_id: str, avatar: str | None) -> None:
+    """Persist avatar on the registered player so /players can return it."""
+    p = registered_players.get(player_id)
+    if p and avatar:
+        p.avatar = avatar
+
+
 def get_table(table_id: str) -> Table | None:
     return tables.get(table_id)
 

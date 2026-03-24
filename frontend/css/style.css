@@ -677,6 +677,7 @@ ul, ol { list-style: none; }
   color: var(--on-surface);
   position: relative;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .match-side:first-child .match-avatar {

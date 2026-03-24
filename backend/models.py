@@ -34,6 +34,7 @@ class SkillLevel(str, Enum):
 class RegisteredPlayer(BaseModel):
     id: str = Field(default_factory=_uuid)
     name: str = Field(..., min_length=1, max_length=20)
+    avatar: Optional[str] = None
     registered_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -46,6 +47,7 @@ class Player(BaseModel):
     nickname: str
     skill: SkillLevel
     registered_id: Optional[str] = None
+    avatar: Optional[str] = None
     joined_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -75,15 +77,18 @@ class JoinRequest(BaseModel):
     nickname: str = Field(..., min_length=1, max_length=20)
     skill: SkillLevel
     player_id: Optional[str] = None
+    avatar: Optional[str] = None
     partner_nickname: Optional[str] = Field(None, min_length=1, max_length=20)
     partner_skill: Optional[SkillLevel] = None
     partner_player_id: Optional[str] = None
+    partner_avatar: Optional[str] = None
 
 
 class JoinSoloRequest(BaseModel):
     nickname: str = Field(..., min_length=1, max_length=20)
     skill: SkillLevel
     player_id: Optional[str] = None
+    avatar: Optional[str] = None
 
 
 class CreateTableRequest(BaseModel):

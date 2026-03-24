@@ -10,7 +10,6 @@
   <link rel="icon" href="/logo.png" type="image/png">
   <link rel="stylesheet" href="/css/style.css">
   <style>
-    /* Extra mobile polish */
     body {
       background: var(--surface);
       overscroll-behavior: none;
@@ -19,7 +18,6 @@
       padding-bottom: env(safe-area-inset-bottom, 2rem);
       padding-bottom: max(2rem, env(safe-area-inset-bottom));
     }
-    /* Live connection dot */
     .live-indicator {
       display: flex;
       align-items: center;
@@ -31,12 +29,25 @@
       text-transform: uppercase;
       color: var(--on-surface-muted);
     }
-    #live-dot {
+    .live-dot {
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: var(--tertiary);
       animation: livePulse 2s ease-in-out infinite;
+    }
+    .lang-btn {
+      font-family: var(--font-display);
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 0.2rem 0.45rem;
+      background: none;
+      border: 1.5px solid var(--on-surface-muted);
+      border-radius: var(--radius-full);
+      color: var(--on-surface-muted);
+      text-transform: uppercase;
+      cursor: pointer;
+      flex-shrink: 0;
     }
     @keyframes livePulse {
       0%, 100% { opacity: 1; }
@@ -46,40 +57,324 @@
 </head>
 <body>
   <div id="app">
-    <!-- Sticky glassmorphism header -->
+
+    <!-- ── Sticky header ────────────────────────────────────────────────────── -->
     <header class="site-header glass">
       <img src="/logo.png" alt="PPSC" class="logo">
       <div class="header-text">
-        <div class="table-name" id="table-name">Loading…</div>
-        <div class="header-meta">
-          <span class="badge badge--singles" id="type-badge"></span>
-          <span class="badge badge--open" id="status-badge"></span>
+        <div class="table-name">{{ tableState ? tableState.name : $t('loading') }}</div>
+        <div class="header-meta" v-if="tableState">
+          <span :class="['badge', 'badge--' + tableState.type]">{{ $t(tableState.type) }}</span>
+          <span :class="['badge', 'badge--' + tableState.status]">{{ $t('status.' + tableState.status) }}</span>
         </div>
       </div>
       <div class="live-indicator">
-        <div id="live-dot"></div>
-        <span>Live</span>
+        <div class="live-dot" :style="{ background: liveDotColor }"></div>
+        <span>{{ $t('live') }}</span>
       </div>
+      <button class="lang-btn" @click="toggleLocale">{{ $i18n.locale === 'de' ? 'EN' : 'DE' }}</button>
     </header>
 
-    <!-- Main content -->
+    <!-- ── Main content ─────────────────────────────────────────────────────── -->
     <main class="page-body">
-      <!-- Current game / open state -->
-      <section id="current-game-section">
+
+      <!-- Loading skeleton -->
+      <template v-if="loading">
         <div class="skeleton" style="height:130px;border-radius:var(--radius-lg)"></div>
-      </section>
+      </template>
 
-      <!-- Queue list -->
-      <section id="queue-section"></section>
+      <!-- Error state -->
+      <template v-else-if="error">
+        <div class="error-state">
+          <div class="error-icon">⚠️</div>
+          <div class="title-md">{{ $t('tableNotFound') }}</div>
+          <p class="body-md text-muted" style="margin-top:0.5rem">{{ $t('tableNotFoundDesc') }}</p>
+        </div>
+      </template>
 
-      <!-- Solo pool (doubles only) -->
-      <section id="solo-pool-section"></section>
+      <!-- Loaded content -->
+      <template v-else-if="tableState">
 
-      <!-- Join form -->
-      <section id="join-form-section"></section>
+        <!-- ── Current game section ─────────────────────────────────────────── -->
+        <section>
+
+          <!-- Table closed -->
+          <div class="closed-banner" v-if="tableState.status === 'closed'">
+            <div class="closed-icon">🚫</div>
+            <div class="title-md">{{ $t('tableClosed') }}</div>
+            <p class="body-md text-muted" style="margin-top:0.5rem">{{ $t('tableNotInService') }}</p>
+          </div>
+
+          <!-- Open, no game yet -->
+          <div class="open-state" v-else-if="!tableState.current_game">
+            <div class="open-icon">🏓</div>
+            <div class="title-md">{{ $t('tableOpen') }}</div>
+            <p class="body-md text-muted" style="margin-top:0.5rem">{{ $t('noOnePlaying') }}</p>
+          </div>
+
+          <!-- One side playing, waiting for opponent -->
+          <div class="waiting-opponent" v-else-if="!tableState.opponent">
+            <div class="waiting-player">
+              <template v-for="(p, i) in tableState.current_game.players" :key="i">
+                <div v-if="i > 0" style="height:var(--sp-2)"></div>
+                <div class="match-avatar" style="width:64px;height:64px;font-size:1.4rem;background:linear-gradient(135deg,var(--primary),var(--primary-container));color:var(--on-primary);box-shadow:0 0 0 3px rgba(169,0,150,0.25)">
+                  <img v-if="playerAvatarUrl(p)" :src="playerAvatarUrl(p)" style="width:100%;height:100%;object-fit:cover;display:block">
+                  <span v-else>{{ initial(p.nickname) }}</span>
+                </div>
+                <div class="match-player-name" style="font-size:1.1rem">{{ p.nickname }}</div>
+                <span :class="['badge', 'badge--' + p.skill]">{{ $t('skillShort.' + p.skill) }}</span>
+              </template>
+            </div>
+            <div class="title-md">{{ $t('waitingForOpponent') }}</div>
+            <p class="body-md text-muted" style="margin-top:0.5rem">
+              {{ tableState.type === 'doubles' ? $t('anotherPairNeeded') : $t('anotherPlayerNeeded') }}
+            </p>
+          </div>
+
+          <!-- Full match: both sides present -->
+          <div class="match-card" v-else>
+            <div class="accent-bar"></div>
+            <div class="match-header">
+              <span class="match-label">{{ $t('nowPlaying') }}</span>
+              <span class="match-live-badge">
+                <span class="match-live-dot"></span> {{ $t('liveMatch') }}
+              </span>
+            </div>
+
+            <div class="match-arena">
+              <!-- Side A -->
+              <div class="match-side">
+                <template v-if="tableState.type === 'doubles'">
+                  <div class="match-team">
+                    <div class="match-team-member" v-for="p in tableState.current_game.players" :key="p.nickname">
+                      <div class="match-avatar">
+                        <img v-if="playerAvatarUrl(p)" :src="playerAvatarUrl(p)" style="width:100%;height:100%;object-fit:cover;display:block">
+                        <span v-else>{{ initial(p.nickname) }}</span>
+                      </div>
+                      <div class="match-player-name">{{ p.nickname }}</div>
+                      <span :class="['badge', 'badge--' + p.skill]">{{ $t('skillShort.' + p.skill) }}</span>
+                      <span class="you-playing-label" v-if="isUserSide('current') && isMe(p)">{{ $t('youPlaying') }}</span>
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="match-avatar">
+                    <img v-if="playerAvatarUrl(tableState.current_game.players[0])" :src="playerAvatarUrl(tableState.current_game.players[0])" style="width:100%;height:100%;object-fit:cover;display:block">
+                    <span v-else>{{ initial(tableState.current_game.players[0].nickname) }}</span>
+                  </div>
+                  <div class="match-player-name">{{ tableState.current_game.players[0].nickname }}</div>
+                  <span :class="['badge', 'badge--' + tableState.current_game.players[0].skill]">{{ $t('skillShort.' + tableState.current_game.players[0].skill) }}</span>
+                  <span class="you-playing-label" v-if="isUserSide('current') && isMe(tableState.current_game.players[0])">{{ $t('youPlaying') }}</span>
+                </template>
+              </div>
+
+              <span class="match-vs">VS</span>
+
+              <!-- Side B -->
+              <div class="match-side">
+                <template v-if="tableState.type === 'doubles'">
+                  <div class="match-team">
+                    <div class="match-team-member" v-for="p in tableState.opponent.players" :key="p.nickname">
+                      <div class="match-avatar">
+                        <img v-if="playerAvatarUrl(p)" :src="playerAvatarUrl(p)" style="width:100%;height:100%;object-fit:cover;display:block">
+                        <span v-else>{{ initial(p.nickname) }}</span>
+                      </div>
+                      <div class="match-player-name">{{ p.nickname }}</div>
+                      <span :class="['badge', 'badge--' + p.skill]">{{ $t('skillShort.' + p.skill) }}</span>
+                      <span class="you-playing-label" v-if="isUserSide('opponent') && isMe(p)">{{ $t('youPlaying') }}</span>
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="match-avatar">
+                    <img v-if="playerAvatarUrl(tableState.opponent.players[0])" :src="playerAvatarUrl(tableState.opponent.players[0])" style="width:100%;height:100%;object-fit:cover;display:block">
+                    <span v-else>{{ initial(tableState.opponent.players[0].nickname) }}</span>
+                  </div>
+                  <div class="match-player-name">{{ tableState.opponent.players[0].nickname }}</div>
+                  <span :class="['badge', 'badge--' + tableState.opponent.players[0].skill]">{{ $t('skillShort.' + tableState.opponent.players[0].skill) }}</span>
+                  <span class="you-playing-label" v-if="isUserSide('opponent') && isMe(tableState.opponent.players[0])">{{ $t('youPlaying') }}</span>
+                </template>
+              </div>
+            </div>
+
+            <!-- Play mode row -->
+            <div class="match-mode-row">
+              <span class="match-mode-badge">{{ tableState.play_mode === 'winner_stays' ? $t('winnerStays') : $t('rotation') }}</span>
+              <span class="match-wins-counter" v-if="tableState.play_mode === 'winner_stays' && tableState.current_wins > 0">
+                {{ $t('winsCounter', { current: tableState.current_wins, max: tableState.max_wins }) }}
+              </span>
+            </div>
+
+            <!-- Actions: winner stays -->
+            <div class="match-actions" v-if="tableState.play_mode === 'winner_stays'">
+              <button class="match-win-btn" @click="declareWinner('current')">
+                {{ $t('won', { name: teamName(tableState.current_game) }) }}
+              </button>
+              <button class="match-win-btn" @click="declareWinner('opponent')">
+                {{ $t('won', { name: teamName(tableState.opponent) }) }}
+              </button>
+            </div>
+
+            <!-- Actions: rotation -->
+            <div class="match-actions" v-else>
+              <button class="game-done-btn" style="width:100%;justify-content:center"
+                @click="gameDone" :disabled="gameDoneSubmitting">
+                {{ $t('gameDone') }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Queue section ────────────────────────────────────────────────── -->
+        <section v-if="tableState.queue && tableState.queue.length > 0">
+          <div class="section-header">
+            <div class="section-title">{{ $t('queue') }}</div>
+            <div class="section-title" style="color:var(--primary)">{{ tableState.queue.length }} {{ $t('waiting') }}</div>
+          </div>
+          <div class="queue-list">
+            <div
+              v-for="(game, idx) in tableState.queue"
+              :key="game.id"
+              :class="['queue-item', idx === 0 ? 'queue-item--next-up' : '']"
+            >
+              <div class="queue-position">
+                <div class="position-num">{{ idx + 1 }}</div>
+                <div class="up-next-label" v-if="idx === 0">{{ $t('upNext') }}</div>
+              </div>
+              <div class="queue-item-info">
+                <div class="queue-players">
+                  <template v-for="(p, i) in game.players" :key="p.nickname">
+                    <span class="queue-player">
+                      <span class="queue-name">{{ p.nickname }}</span>
+                      <span :class="['badge', 'badge--' + p.skill]">{{ $t('skillShort.' + p.skill) }}</span>
+                    </span>
+                    <span class="vs-divider" v-if="i < game.players.length - 1" style="font-size:0.7rem">vs</span>
+                  </template>
+                </div>
+                <div class="queue-time">{{ formatWaitTime(game.queued_at) }} {{ $t('waiting') }}</div>
+                <div class="you-playing-label"
+                  v-if="userInfo && userInfo.location === 'queue' && userInfo.game.id === game.id">
+                  {{ $t('thatsYou') }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Solo pool section (doubles only) ────────────────────────────── -->
+        <section v-if="tableState.type === 'doubles' && (soloPool.length > 0 || userInPool)">
+          <div class="solo-pool">
+            <div class="solo-pool-header">
+              <div class="solo-pool-icon">🎯</div>
+              <div>
+                <div class="solo-pool-title">{{ $t('partnerWaitingPool') }}</div>
+                <div class="solo-pool-count">
+                  {{ soloPool.length === 1
+                    ? $t('waitingForPartner')
+                    : $t('nPlayersWaiting', { n: soloPool.length }) }}
+                </div>
+              </div>
+            </div>
+            <template v-if="soloPool.length > 0">
+              <div class="solo-item" v-for="p in soloPool" :key="p.id">
+                <div class="solo-waiting-icon"></div>
+                <span class="queue-name">{{ p.nickname }}</span>
+                <span :class="['badge', 'badge--' + p.skill]">{{ $t('skillShort.' + p.skill) }}</span>
+                <span class="you-playing-label" v-if="isInPool(p)">{{ $t('youPlaying') }}</span>
+              </div>
+            </template>
+            <div class="solo-pool-waiting" v-else>{{ $t('youreInPool') }}</div>
+          </div>
+        </section>
+
+        <!-- ── Join form section ────────────────────────────────────────────── -->
+        <section v-if="tableState.status !== 'closed'">
+          <div class="join-form-section">
+            <img src="/logo.png" class="watermark" alt="">
+            <div class="join-form-title">{{ $t('joinTheQueue') }}</div>
+
+            <!-- Singles form -->
+            <form class="form-stack" v-if="tableState.type === 'singles'" @submit.prevent="submitJoin">
+              <div class="form-group">
+                <label class="form-label">{{ $t('yourName') }}</label>
+                <div style="display:flex;align-items:center;gap:0.75rem">
+                  <input class="form-input" type="text"
+                    :value="registration ? registration.name : ''"
+                    readonly style="opacity:0.7;cursor:default;flex:1">
+                  <span :class="['badge', 'badge--' + registration.skill]">{{ $t('skillShort.' + registration.skill) }}</span>
+                </div>
+                <a href="/register" style="font-size:0.75rem;color:var(--primary);margin-top:0.25rem;display:inline-block">
+                  {{ $t('notYouLogout') }}
+                </a>
+              </div>
+              <button class="btn btn-primary btn-full" type="submit" :disabled="joinSubmitting">
+                {{ joinSubmitting ? $t('joining') : $t('joinQueueBtn') }}
+              </button>
+            </form>
+
+            <!-- Doubles form -->
+            <div class="form-stack" v-else>
+              <div class="form-group">
+                <label class="form-label">{{ $t('howJoining') }}</label>
+                <div class="radio-group">
+                  <input type="radio" name="join-mode" id="mode-pair" value="pair" v-model="joinMode">
+                  <label for="mode-pair">{{ $t('havePartner') }}</label>
+                  <input type="radio" name="join-mode" id="mode-solo" value="solo" v-model="joinMode">
+                  <label for="mode-solo">{{ $t('needPartner') }}</label>
+                </div>
+              </div>
+              <form class="form-stack" @submit.prevent="submitJoin">
+                <div class="form-group">
+                  <label class="form-label">{{ $t('yourName') }}</label>
+                  <div style="display:flex;align-items:center;gap:0.75rem">
+                    <input class="form-input" type="text"
+                      :value="registration ? registration.name : ''"
+                      readonly style="opacity:0.7;cursor:default;flex:1">
+                    <span :class="['badge', 'badge--' + registration.skill]">{{ $t('skillShort.' + registration.skill) }}</span>
+                  </div>
+                  <a href="/register" style="font-size:0.75rem;color:var(--primary);margin-top:0.25rem;display:inline-block">
+                    {{ $t('notYouLogout') }}
+                  </a>
+                </div>
+                <template v-if="joinMode === 'pair'">
+                  <div class="partner-section">
+                    <div class="partner-section-label">{{ $t('yourPartner') }}</div>
+                    <div class="form-group">
+                      <label class="form-label">{{ $t('partnerName') }}</label>
+                      <input class="form-input" type="text" v-model="partnerNickname"
+                        :placeholder="$t('namePlaceholder')" maxlength="20"
+                        autocomplete="off" list="registered-players-list" required>
+                      <datalist id="registered-players-list">
+                        <option v-for="p in filteredRegisteredPlayers" :key="p.id" :value="p.name"></option>
+                      </datalist>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">{{ $t('partnerSkillLevel') }}</label>
+                      <select class="form-select" v-model="partnerSkill" required>
+                        <option value="">{{ $t('chooseDots') }}</option>
+                        <option value="beginner">{{ $t('beginner') }}</option>
+                        <option value="intermediate">{{ $t('intermediate') }}</option>
+                        <option value="advanced">{{ $t('advanced') }}</option>
+                      </select>
+                    </div>
+                  </div>
+                </template>
+                <button class="btn btn-primary btn-full" type="submit" :disabled="joinSubmitting">
+                  {{ joinSubmitting ? $t('joining') : (joinMode === 'solo' ? $t('joinSoloPoolBtn') : $t('joinQueueBtn')) }}
+                </button>
+              </form>
+            </div>
+
+          </div>
+        </section>
+
+      </template>
     </main>
   </div>
 
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/vue-i18n@9/dist/vue-i18n.global.prod.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/table.js"></script>
 </body>
 </html>
