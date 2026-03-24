@@ -46,15 +46,36 @@
         const tables = await res.json();
         const entries = Object.values(tables);
 
+        const origin = window.location.origin;
+
+        // Registration QR card — always shown
+        const registerCard = `
+          <div class="qr-card" style="border:2px solid var(--primary)">
+            <img src="/admin/qr/register" alt="QR for Registration"
+              onerror="this.style.display='none'">
+            <div class="qr-card-name" style="color:var(--primary)">Player Registration</div>
+            <div class="qr-card-url">${origin}/register</div>
+            <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap">
+              <span class="badge badge--open">Central QR</span>
+            </div>
+            <div style="margin-top:1rem">
+              <a href="/admin/qr/register" download="register-qr.png"
+                class="btn btn-primary btn-sm btn-full">
+                ⬇ Download PNG
+              </a>
+            </div>
+          </div>
+        `;
+
         if (entries.length === 0) {
           container.innerHTML = `
-            <div style="text-align:center;padding:3rem;color:var(--on-surface-muted)">
+            <div class="qr-grid">${registerCard}</div>
+            <div style="text-align:center;padding:2rem;color:var(--on-surface-muted)">
               No tables yet. <a href="/admin">Create some tables first.</a>
             </div>`;
           return;
         }
 
-        const origin = window.location.origin;
         const cards = entries.map(table => `
           <div class="qr-card">
             <img src="/admin/qr/${encodeURIComponent(table.id)}" alt="QR for ${table.name}"
@@ -73,7 +94,7 @@
           </div>
         `).join('');
 
-        container.innerHTML = `<div class="qr-grid">${cards}</div>`;
+        container.innerHTML = `<div class="qr-grid">${registerCard}${cards}</div>`;
       } catch (e) {
         container.innerHTML = `<div style="padding:2rem;color:var(--error)">Error: ${e.message}</div>`;
       }

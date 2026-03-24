@@ -18,6 +18,7 @@ logger = logging.getLogger("ppsc")
 from .models import (
     Table, TableType, TableStatus, Player, Game,
     JoinRequest, JoinSoloRequest, CreateTableRequest, PatchTableRequest,
+    RegisterRequest,
 )
 from . import state as state_module
 from .sse import sse_manager
@@ -281,6 +282,41 @@ async def logo():
     raise HTTPException(404, "Logo not found")
 
 
+# ── Registration ──────────────────────────────────────────────────────────────
+
+@app.get("/register", response_class=HTMLResponse)
+async def register_page():
+    return _html("register.html")
+
+
+@app.post("/register")
+async def register_player(body: RegisterRequest):
+    player = state_module.register_player(body.name)
+    return {"player_id": player.id, "name": player.name}
+
+
+@app.post("/logout")
+async def player_logout(request: Request):
+    body = await request.json()
+    player_id = body.get("player_id")
+    if player_id:
+        state_module.unregister_player(player_id)
+    return {"status": "ok"}
+
+
+@app.get("/register/check/{player_id}")
+async def check_registration(player_id: str):
+    player = state_module.get_registered_player(player_id)
+    if player:
+        return {"valid": True, "name": player.name}
+    return {"valid": False, "name": None}
+
+
+@app.get("/players")
+async def list_players():
+    return [{"id": p.id, "name": p.name} for p in state_module.list_registered_players()]
+
+
 @app.get("/table/{table_id}", response_class=HTMLResponse)
 async def table_page(table_id: str):
     if not state_module.get_table(table_id):
@@ -330,14 +366,14 @@ async def join_queue(table_id: str, body: JoinRequest):
     if table.status == TableStatus.closed:
         raise HTTPException(409, "Table is closed")
 
-    player1 = Player(nickname=body.nickname, skill=body.skill)
+    player1 = Player(nickname=body.nickname, skill=body.skill, registered_id=body.player_id)
 
     if table.type == TableType.singles:
         game = Game(players=[player1])
     else:
         if not body.partner_nickname or not body.partner_skill:
             raise HTTPException(400, "Partner details required for doubles pair join")
-        player2 = Player(nickname=body.partner_nickname, skill=body.partner_skill)
+        player2 = Player(nickname=body.partner_nickname, skill=body.partner_skill, registered_id=body.partner_player_id)
         game = Game(players=[player1, player2])
 
     updated = state_module.join_queue(table_id, game)
@@ -365,7 +401,7 @@ async def join_solo(table_id: str, body: JoinSoloRequest):
     if table.status == TableStatus.closed:
         raise HTTPException(409, "Table is closed")
 
-    player = Player(nickname=body.nickname, skill=body.skill)
+    player = Player(nickname=body.nickname, skill=body.skill, registered_id=body.player_id)
     _, paired_game = state_module.join_solo_pool(table_id, player)
     await _broadcast(table_id)
 
@@ -489,6 +525,22 @@ async def admin_stream(request: Request):
 async def admin_qr_page(request: Request):
     require_admin(request)
     return _html("admin_qr.html")
+
+
+@app.get("/admin/qr/register")
+async def admin_qr_register(request: Request):
+    require_admin(request)
+    import qrcode
+    url = f"{BASE_URL}/register"
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="image/png",
+        headers={"Content-Disposition": 'inline; filename="register-qr.png"'},
+    )
 
 
 @app.get("/admin/qr/{table_id}")

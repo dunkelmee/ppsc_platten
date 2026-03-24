@@ -3,24 +3,41 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const tableId = window.location.pathname.split('/').filter(Boolean)[1];
-const STORAGE_KEY = `ppsc_${tableId}`;
+const PLAYER_KEY = 'ppsc_player';
+const TABLE_KEY = `ppsc_table_${tableId}`;
 
 let tableState = null;
 let eventSource = null;
 
 // ── Identity tracking ─────────────────────────────────────────────────────────
 
-function getIdentity() {
-  try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null'); }
+function getRegistration() {
+  try { return JSON.parse(localStorage.getItem(PLAYER_KEY) || 'null'); }
   catch { return null; }
 }
 
+function getTableIdentity() {
+  try { return JSON.parse(localStorage.getItem(TABLE_KEY) || 'null'); }
+  catch { return null; }
+}
+
+function setTableIdentity(data) {
+  localStorage.setItem(TABLE_KEY, JSON.stringify(data));
+}
+
+function getIdentity() {
+  const reg = getRegistration();
+  const table = getTableIdentity();
+  if (!reg) return null;
+  return { nickname: reg.name, playerId: reg.playerId, ...(table || {}) };
+}
+
 function setIdentity(data) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  setTableIdentity(data);
 }
 
 function clearIdentity() {
-  sessionStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(TABLE_KEY);
 }
 
 // ── Time formatting ───────────────────────────────────────────────────────────
@@ -48,12 +65,27 @@ function playerInitial(nickname) {
 
 // ── Find user's position in queue ─────────────────────────────────────────────
 
+function _isMe(player, userInfo) {
+  const reg = getRegistration();
+  if (reg && player.registered_id) return player.registered_id === reg.playerId;
+  return player.nickname === userInfo.nickname;
+}
+
+function _matchPlayer(p, identity) {
+  // Match by registered_id (UUID) first — handles duplicate names
+  if (identity.playerId && p.registered_id) {
+    return p.registered_id === identity.playerId;
+  }
+  // Fallback: match by nickname + gameId
+  return p.nickname === identity.nickname;
+}
+
 function getUserGameInfo(state, identity) {
   if (!identity || !state) return null;
   // Check current game (side A)
   if (state.current_game) {
     const p = state.current_game.players.find(p =>
-      p.nickname === identity.nickname &&
+      _matchPlayer(p, identity) &&
       (identity.gameId ? state.current_game.id === identity.gameId : true)
     );
     if (p) return { location: 'playing', game: state.current_game, side: 'current', nickname: identity.nickname };
@@ -61,7 +93,7 @@ function getUserGameInfo(state, identity) {
   // Check opponent (side B)
   if (state.opponent) {
     const p = state.opponent.players.find(p =>
-      p.nickname === identity.nickname &&
+      _matchPlayer(p, identity) &&
       (identity.gameId ? state.opponent.id === identity.gameId : true)
     );
     if (p) return { location: 'playing', game: state.opponent, side: 'opponent', nickname: identity.nickname };
@@ -70,17 +102,18 @@ function getUserGameInfo(state, identity) {
   for (let i = 0; i < state.queue.length; i++) {
     const game = state.queue[i];
     const found = game.players.some(p =>
-      p.nickname === identity.nickname &&
+      _matchPlayer(p, identity) &&
       (identity.gameId ? game.id === identity.gameId : true)
     );
     if (found) return { location: 'queue', position: i + 1, game, nickname: identity.nickname };
   }
   // Check solo pool
   if (state.solo_pool) {
-    const solo = state.solo_pool.find(p =>
-      p.nickname === identity.nickname &&
-      (identity.playerId ? p.id === identity.playerId : true)
-    );
+    const solo = state.solo_pool.find(p => {
+      if (identity.playerId && p.registered_id) return p.registered_id === identity.playerId;
+      if (identity.soloPlayerId) return p.id === identity.soloPlayerId;
+      return p.nickname === identity.nickname;
+    });
     if (solo) return { location: 'pool', player: solo };
   }
   return null;
@@ -102,7 +135,7 @@ function renderMatchSide(game, isDoubles, userInfo, sideKey) {
               <div class="match-avatar">${playerInitial(p.nickname)}</div>
               <div class="match-player-name">${escHtml(p.nickname)}</div>
               ${skillBadge(p.skill)}
-              ${isUserSide && p.nickname === userInfo.nickname ? '<span class="you-playing-label">★ You</span>' : ''}
+              ${isUserSide && _isMe(p, userInfo) ? '<span class="you-playing-label">\u2605 You</span>' : ''}
             </div>
           `).join('')}
         </div>
@@ -116,7 +149,7 @@ function renderMatchSide(game, isDoubles, userInfo, sideKey) {
       <div class="match-avatar">${playerInitial(p.nickname)}</div>
       <div class="match-player-name">${escHtml(p.nickname)}</div>
       ${skillBadge(p.skill)}
-      ${isUserSide && p.nickname === userInfo.nickname ? '<span class="you-playing-label">★ You</span>' : ''}
+      ${isUserSide && _isMe(p, userInfo) ? '<span class="you-playing-label">\u2605 You</span>' : ''}
     </div>
   `;
 }
@@ -317,7 +350,7 @@ function renderSoloPool(state, identity) {
       <div class="solo-waiting-icon"></div>
       <span class="queue-name">${escHtml(p.nickname)}</span>
       ${skillBadge(p.skill)}
-      ${(identity && p.nickname === identity.nickname) ? '<span class="you-playing-label">★ You</span>' : ''}
+      ${(identity && ((identity.playerId && p.registered_id === identity.playerId) || p.nickname === identity.nickname)) ? '<span class="you-playing-label">\u2605 You</span>' : ''}
     </div>
   `).join('');
 
@@ -357,6 +390,8 @@ function renderForm(state) {
 }
 
 function singlesFormHtml() {
+  const reg = getRegistration();
+  const name = reg ? escHtml(reg.name) : '';
   return `
     <div class="join-form-section">
       <img src="/logo.png" class="watermark" alt="">
@@ -365,19 +400,20 @@ function singlesFormHtml() {
         <div class="form-group">
           <label class="form-label" for="nickname">Your name</label>
           <input class="form-input" type="text" id="nickname" name="nickname"
-            placeholder="e.g. Smasher99" maxlength="20" required autocomplete="off">
+            value="${name}" readonly style="opacity:0.7;cursor:default">
+          <a href="/register" style="font-size:0.75rem;color:var(--primary);margin-top:0.25rem;display:inline-block">Not you? Log out</a>
         </div>
         <div class="form-group">
           <label class="form-label" for="skill">Skill level</label>
           <select class="form-select" id="skill" name="skill" required>
-            <option value="">Choose…</option>
-            <option value="beginner">🟢 Beginner</option>
-            <option value="intermediate">🟡 Intermediate</option>
-            <option value="advanced">🔴 Advanced</option>
+            <option value="">Choose\u2026</option>
+            <option value="beginner">\ud83d\udfe2 Beginner</option>
+            <option value="intermediate">\ud83d\udfe1 Intermediate</option>
+            <option value="advanced">\ud83d\udd34 Advanced</option>
           </select>
         </div>
         <button class="btn btn-primary btn-full" type="submit">
-          Join Queue →
+          Join Queue \u2192
         </button>
       </form>
     </div>
@@ -385,6 +421,8 @@ function singlesFormHtml() {
 }
 
 function doublesFormHtml() {
+  const reg = getRegistration();
+  const name = reg ? escHtml(reg.name) : '';
   return `
     <div class="join-form-section">
       <img src="/logo.png" class="watermark" alt="">
@@ -404,15 +442,16 @@ function doublesFormHtml() {
           <div class="form-group">
             <label class="form-label" for="nickname">Your name</label>
             <input class="form-input" type="text" id="nickname" name="nickname"
-              placeholder="e.g. Smasher99" maxlength="20" required autocomplete="off">
+              value="${name}" readonly style="opacity:0.7;cursor:default">
+            <a href="/register" style="font-size:0.75rem;color:var(--primary);margin-top:0.25rem;display:inline-block">Not you? Log out</a>
           </div>
           <div class="form-group">
             <label class="form-label" for="skill">Your skill level</label>
             <select class="form-select" id="skill" name="skill" required>
-              <option value="">Choose…</option>
-              <option value="beginner">🟢 Beginner</option>
-              <option value="intermediate">🟡 Intermediate</option>
-              <option value="advanced">🔴 Advanced</option>
+              <option value="">Choose\u2026</option>
+              <option value="beginner">\ud83d\udfe2 Beginner</option>
+              <option value="intermediate">\ud83d\udfe1 Intermediate</option>
+              <option value="advanced">\ud83d\udd34 Advanced</option>
             </select>
           </div>
 
@@ -421,26 +460,48 @@ function doublesFormHtml() {
             <div class="form-group">
               <label class="form-label" for="partner-nickname">Partner's name</label>
               <input class="form-input" type="text" id="partner-nickname" name="partner_nickname"
-                placeholder="e.g. Loopmaster" maxlength="20" autocomplete="off">
+                placeholder="e.g. Loopmaster" maxlength="20" autocomplete="off" list="registered-players-list">
+              <datalist id="registered-players-list"></datalist>
+              <input type="hidden" id="partner-player-id" name="partner_player_id">
             </div>
             <div class="form-group">
               <label class="form-label" for="partner-skill">Partner's skill level</label>
               <select class="form-select" id="partner-skill" name="partner_skill">
-                <option value="">Choose…</option>
-                <option value="beginner">🟢 Beginner</option>
-                <option value="intermediate">🟡 Intermediate</option>
-                <option value="advanced">🔴 Advanced</option>
+                <option value="">Choose\u2026</option>
+                <option value="beginner">\ud83d\udfe2 Beginner</option>
+                <option value="intermediate">\ud83d\udfe1 Intermediate</option>
+                <option value="advanced">\ud83d\udd34 Advanced</option>
               </select>
             </div>
           </div>
 
           <button class="btn btn-primary btn-full" type="submit" id="join-btn">
-            Join Queue →
+            Join Queue \u2192
           </button>
         </form>
       </div>
     </div>
   `;
+}
+
+let _registeredPlayers = [];
+
+async function loadRegisteredPlayers() {
+  try {
+    const res = await fetch('/players');
+    if (res.ok) _registeredPlayers = await res.json();
+  } catch {}
+}
+
+function populatePartnerDatalist() {
+  const dl = document.getElementById('registered-players-list');
+  if (!dl) return;
+  const reg = getRegistration();
+  const myId = reg ? reg.playerId : null;
+  dl.innerHTML = _registeredPlayers
+    .filter(p => p.id !== myId)
+    .map(p => `<option value="${escHtml(p.name)}" data-id="${escHtml(p.id)}">`)
+    .join('');
 }
 
 function setupDoublesToggle() {
@@ -450,18 +511,30 @@ function setupDoublesToggle() {
   const partnerSkill = document.getElementById('partner-skill');
   const joinBtn = document.getElementById('join-btn');
 
+  // Populate partner autocomplete
+  loadRegisteredPlayers().then(populatePartnerDatalist);
+
+  // Resolve partner_player_id when a name is picked from the datalist
+  if (partnerNickname) {
+    partnerNickname.addEventListener('input', () => {
+      const hidden = document.getElementById('partner-player-id');
+      const match = _registeredPlayers.find(p => p.name === partnerNickname.value);
+      if (hidden) hidden.value = match ? match.id : '';
+    });
+  }
+
   function update() {
     const mode = document.querySelector('input[name="join-mode"]:checked')?.value;
     if (mode === 'solo') {
       partnerFields.classList.add('hidden');
       partnerNickname.removeAttribute('required');
       partnerSkill.removeAttribute('required');
-      joinBtn.textContent = 'Join Solo Pool →';
+      joinBtn.textContent = 'Join Solo Pool \u2192';
     } else {
       partnerFields.classList.remove('hidden');
       partnerNickname.setAttribute('required', '');
       partnerSkill.setAttribute('required', '');
-      joinBtn.textContent = 'Join Queue →';
+      joinBtn.textContent = 'Join Queue \u2192';
     }
   }
 
@@ -484,9 +557,8 @@ function render(state, prevState) {
     if (prevInfo && prevInfo.location === 'pool' && currInfo && currInfo.location !== 'pool') {
       const partner = currInfo.game.players.find(p => p.nickname !== identity.nickname);
       if (partner) {
-        showNotification(`🎉 You've been paired with ${partner.nickname}!`);
-        const updated = { ...identity, gameId: currInfo.game.id, location: 'queue' };
-        setIdentity(updated);
+        showNotification(`\ud83c\udf89 You've been paired with ${partner.nickname}!`);
+        setIdentity({ ...getTableIdentity(), gameId: currInfo.game.id });
         subscribeToPush(currInfo.game.id);
       }
     }
@@ -524,16 +596,19 @@ async function submitJoin(event) {
   btn.disabled = true;
   btn.textContent = 'Joining…';
 
-  const nickname = form.querySelector('#nickname').value.trim();
+  const reg = getRegistration();
+  const nickname = reg ? reg.name : form.querySelector('#nickname').value.trim();
   const skill = form.querySelector('#skill').value;
   const mode = form.closest('.form-stack')?.querySelector('input[name="join-mode"]:checked')?.value || 'pair';
 
   try {
     if (tableState.type === 'singles' || mode === 'pair') {
-      const body = { nickname, skill };
+      const body = { nickname, skill, player_id: reg ? reg.playerId : null };
       if (tableState.type === 'doubles') {
         body.partner_nickname = form.querySelector('#partner-nickname').value.trim();
         body.partner_skill = form.querySelector('#partner-skill').value;
+        const partnerIdEl = form.querySelector('#partner-player-id');
+        if (partnerIdEl && partnerIdEl.value) body.partner_player_id = partnerIdEl.value;
       }
       const res = await fetch(`/table/${tableId}/join`, {
         method: 'POST',
@@ -545,15 +620,15 @@ async function submitJoin(event) {
         throw new Error(err.detail || 'Error joining');
       }
       const data = await res.json();
-      setIdentity({ nickname, gameId: data.game_id, type: tableState.type === 'singles' ? 'singles' : 'doubles_pair' });
-      showNotification(data.position === 0 ? '🏓 You\'re up — good luck!' : `✓ Joined! You're #${data.position} in the queue`);
+      setIdentity({ gameId: data.game_id, type: tableState.type === 'singles' ? 'singles' : 'doubles_pair' });
+      showNotification(data.position === 0 ? '\ud83c\udfd3 You\'re up \u2014 good luck!' : `\u2713 Joined! You're #${data.position} in the queue`);
       if (data.position !== 0) subscribeToPush(data.game_id);
     } else {
       // Solo
       const res = await fetch(`/table/${tableId}/join-solo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname, skill }),
+        body: JSON.stringify({ nickname, skill, player_id: reg ? reg.playerId : null }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Error joining' }));
@@ -561,12 +636,12 @@ async function submitJoin(event) {
       }
       const data = await res.json();
       if (data.status === 'paired') {
-        setIdentity({ nickname, gameId: data.game_id, playerId: data.player_id, type: 'doubles_solo' });
-        showNotification(`🎉 Paired with ${data.paired_with}! You're in the queue.`);
+        setIdentity({ gameId: data.game_id, soloPlayerId: data.player_id, type: 'doubles_solo' });
+        showNotification(`\ud83c\udf89 Paired with ${data.paired_with}! You're in the queue.`);
         subscribeToPush(data.game_id);
       } else {
-        setIdentity({ nickname, gameId: null, playerId: data.player_id, type: 'doubles_solo' });
-        showNotification('⏳ Waiting for a partner…');
+        setIdentity({ gameId: null, soloPlayerId: data.player_id, type: 'doubles_solo' });
+        showNotification('\u23f3 Waiting for a partner\u2026');
         // Will subscribe once paired (detected via SSE in render())
       }
     }
@@ -760,8 +835,27 @@ async function init() {
 
   const app = document.getElementById('app');
   if (!tableId) {
-    app.innerHTML = `<div class="error-state"><div class="error-icon">⚠️</div><p>No table ID found in URL.</p></div>`;
+    app.innerHTML = `<div class="error-state"><div class="error-icon">\u26a0\ufe0f</div><p>No table ID found in URL.</p></div>`;
     return;
+  }
+
+  // Registration gate: redirect to /register if not registered
+  const registration = getRegistration();
+  if (!registration) {
+    window.location.href = `/register?next=${encodeURIComponent(window.location.pathname)}`;
+    return;
+  }
+  // Validate registration is still valid on server (handles server restarts)
+  try {
+    const checkRes = await fetch(`/register/check/${encodeURIComponent(registration.playerId)}`);
+    const checkData = await checkRes.json();
+    if (!checkData.valid) {
+      localStorage.removeItem(PLAYER_KEY);
+      window.location.href = `/register?next=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+  } catch {
+    // If check fails (network error), proceed anyway — the name is still in localStorage
   }
 
   // Show skeleton while loading
@@ -783,7 +877,7 @@ async function init() {
   } catch (err) {
     document.getElementById('current-game-section').innerHTML = `
       <div class="error-state">
-        <div class="error-icon">⚠️</div>
+        <div class="error-icon">\u26a0\ufe0f</div>
         <div class="title-md">Table not found</div>
         <p class="body-md text-muted" style="margin-top:0.5rem">
           This table doesn't exist yet. Ask the host to set it up.

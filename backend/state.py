@@ -1,8 +1,9 @@
 import json
 import os
-from .models import Table, TableType, TableStatus, PlayMode, Player, Game
+from .models import Table, TableType, TableStatus, PlayMode, Player, Game, RegisteredPlayer
 
 tables: dict[str, Table] = {}
+registered_players: dict[str, RegisteredPlayer] = {}
 
 
 def load_initial_tables() -> None:
@@ -18,6 +19,24 @@ def load_initial_tables() -> None:
         print(f"Loaded {len(data)} table(s) from {config_path}")
     except Exception as exc:
         print(f"Warning: failed to load {config_path}: {exc}")
+
+
+def register_player(name: str) -> RegisteredPlayer:
+    player = RegisteredPlayer(name=name)
+    registered_players[player.id] = player
+    return player
+
+
+def get_registered_player(player_id: str) -> RegisteredPlayer | None:
+    return registered_players.get(player_id)
+
+
+def unregister_player(player_id: str) -> bool:
+    return registered_players.pop(player_id, None) is not None
+
+
+def list_registered_players() -> list[RegisteredPlayer]:
+    return list(registered_players.values())
 
 
 def get_table(table_id: str) -> Table | None:

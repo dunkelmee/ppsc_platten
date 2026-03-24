@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#a90096">
+  <title>Register — PPSC</title>
+  <link rel="icon" href="/logo.png" type="image/png">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <img src="/logo.png" alt="PPSC Logo" class="login-logo">
+      <h1 class="login-title">Welcome!</h1>
+      <p class="login-subtitle">Ping Pong Social Club</p>
+
+      <div id="register-view">
+        <form class="form-stack" id="register-form">
+          <div class="form-group">
+            <label class="form-label" for="player-name">Your name</label>
+            <input
+              class="form-input"
+              type="text"
+              id="player-name"
+              name="name"
+              placeholder="e.g. Alex"
+              maxlength="20"
+              required
+              autofocus
+              autocomplete="off"
+            >
+          </div>
+          <button class="btn btn-primary btn-full" type="submit">
+            Register &rarr;
+          </button>
+        </form>
+      </div>
+
+      <div id="welcome-view" style="display:none">
+        <div style="text-align:center;margin:1.5rem 0">
+          <div style="font-size:2.5rem;margin-bottom:0.75rem">&#127955;</div>
+          <div class="title-md" id="welcome-name"></div>
+          <p class="body-md text-muted" style="margin-top:0.5rem">
+            You're registered! Scan a table QR code to start playing.
+          </p>
+        </div>
+        <button class="btn btn-secondary btn-full" id="logout-btn">
+          Log out
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PLAYER_KEY = 'ppsc_player';
+
+    function getRegistration() {
+      try { return JSON.parse(localStorage.getItem(PLAYER_KEY) || 'null'); }
+      catch { return null; }
+    }
+
+    function showRegisterView() {
+      document.getElementById('register-view').style.display = '';
+      document.getElementById('welcome-view').style.display = 'none';
+    }
+
+    function showWelcomeView(name) {
+      document.getElementById('register-view').style.display = 'none';
+      document.getElementById('welcome-view').style.display = '';
+      document.getElementById('welcome-name').textContent = 'Welcome, ' + name + '!';
+    }
+
+    async function checkAndShow() {
+      const reg = getRegistration();
+      if (!reg) { showRegisterView(); return; }
+
+      // Validate registration is still valid on the server
+      try {
+        const res = await fetch('/register/check/' + encodeURIComponent(reg.playerId));
+        const data = await res.json();
+        if (data.valid) {
+          showWelcomeView(data.name);
+          maybeRedirect();
+          return;
+        }
+      } catch {}
+
+      // Invalid — clear and show register form
+      localStorage.removeItem(PLAYER_KEY);
+      showRegisterView();
+    }
+
+    function maybeRedirect() {
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get('next');
+      if (next && next.startsWith('/')) {
+        window.location.href = next;
+      }
+    }
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('[type="submit"]');
+      btn.disabled = true;
+      btn.textContent = 'Registering\u2026';
+
+      const name = document.getElementById('player-name').value.trim();
+      try {
+        const res = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!res.ok) throw new Error('Registration failed');
+        const data = await res.json();
+        localStorage.setItem(PLAYER_KEY, JSON.stringify({ playerId: data.player_id, name: data.name }));
+        showWelcomeView(data.name);
+        maybeRedirect();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Register \u2192';
+        alert(err.message);
+      }
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      const reg = getRegistration();
+      if (reg) {
+        try {
+          await fetch('/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ player_id: reg.playerId }),
+          });
+        } catch {}
+      }
+      // Clear all ppsc localStorage keys
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('ppsc_')) toRemove.push(key);
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+      showRegisterView();
+    });
+
+    checkAndShow();
+  </script>
+</body>
+</html>
